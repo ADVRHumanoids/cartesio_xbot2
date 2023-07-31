@@ -65,7 +65,6 @@ bool CartesioRt::on_initialize()
     RosServerClass::Options opt;
     opt.tf_prefix = getParamOr<std::string>("~tf_prefix", "ci");
     opt.ros_namespace = getParamOr<std::string>("~ros_ns", "cartesian");
-    auto ros_srv = std::make_shared<RosServerClass>(_nrt_ci, opt);
 
     /* Initialization */
     _rt_active = false;
@@ -74,40 +73,79 @@ bool CartesioRt::on_initialize()
     _nrt_exit = false;
     auto nrt_exit_ptr = &_nrt_exit;
 
+    _ros_active = false;
+    auto _ros_active_ptr = &_ros_active;
+
     _qdot = _q.setZero(_rt_model->getJointNum());
     _robot->getPositionReference(_qmap);
 
+
     /* Spawn thread */
     _nrt_th = std::make_unique<thread>(
-        [rt_active_ptr, nrt_exit_ptr, nrt_ci, ros_srv]()
+        [rt_active_ptr, nrt_exit_ptr, _ros_active_ptr, nrt_ci, opt]()
         {
-            return;
-
-            this_thread::set_name("acartesio_nrt");
+            this_thread::set_name("cartesio_nrt");
+            std::shared_ptr<RosServerClass> ros_srv;
 
             while(!*nrt_exit_ptr)
             {
+                if ((*rt_active_ptr) && (!*_ros_active_ptr)) 
+                {
+                    // plugin start detected
+                    ros_srv = std::make_shared<RosServerClass>(nrt_ci, opt);
+                    *_ros_active_ptr = true;
+                }
+
                 this_thread::sleep_for(10ms);
 
-                if(!*rt_active_ptr) continue;
+                if (*_ros_active_ptr)
+                {
+                    if (*rt_active_ptr) 
+                    {
+                        // normal operation
+                        nrt_ci->updateState();
+                        ros_srv->run();
+                    }
 
-                nrt_ci->updateState();
-                ros_srv->run();
-
+                    else
+                    {
+                        // plugin stop detected
+                        ros_srv.reset();
+                        *_ros_active_ptr = false;
+                    }
+                }
             }
 
         });
 
     /* Set robot control mode */
-    _robot->setControlMode(ControlMode::Position() + ControlMode::Effort());
-
-    /* Feedback */
-    _enable_feedback = getParamOr("~enable_feedback", false);
-
-    if(_enable_feedback)
+    std::vector<std::string> enabled_chains;
+    if(!getParam("~enabled_chains", enabled_chains))
     {
-        jinfo("running with feedback enabled");
+        jwarn("parameter ~enabled_chains is empty: enabling all chains)");
+        enabled_chains = _robot->getChainNames();
     }
+
+    for(auto ch : enabled_chains)
+    {
+        for(auto jn : _robot->chain(ch).getJointNames())
+        {
+            jinfo("enabling joint {}", jn);
+            _ctrl_map[jn] = ControlMode::PosImpedance() + ControlMode::Effort();
+        }
+    }
+
+#if XBOT2_VERSION_MINOR < 10
+    _robot->setControlMode(ControlMode::Idle());
+    _robot->setControlMode(_ctrl_map);
+#else 
+    setDefaultControlMode(_ctrl_map);
+#endif
+
+    // logger
+    _profiling_logger = XBot::MatLogger2::MakeLogger("profiling_ik");
+    _profiling_logger->create("solve_time", 1);
+    _profiling_logger->create("overhead_time", 1);
 
     return true;
 }
@@ -127,7 +165,7 @@ void CartesioRt::starting()
     _rt_ci->reset(_fake_time);
 
     // signal nrt thread that rt is active
-    // _rt_active = true;
+    _rt_active = true;
 
     // transit to run
     start_completed();
@@ -137,63 +175,58 @@ void CartesioRt::starting()
 void CartesioRt::run()
 {
     /* Receive commands from nrt */
-    // _nrt_ci->callAvailable(_rt_ci.get());
+    _nrt_ci->callAvailable(_rt_ci.get());
 
-    /* Update robot */
-    if(_enable_feedback)
-    {
-        _robot->sense(false);
-        _rt_model->syncFrom(*_robot);
-
-        // TBD floating base state
-    }
-
+    auto tic = std::chrono::high_resolution_clock::now();
     /* Solve IK */
     if(!_rt_ci->update(_fake_time, getPeriodSec()))
     {
         jerror("unable to solve \n");
         return;
     }
+    auto toc = std::chrono::high_resolution_clock::now();
+    _solve_time = std::chrono::duration_cast<std::chrono::nanoseconds>(toc-tic).count()*1e-9;
+    _profiling_logger->add("solve_time", _solve_time);
+
+
+    tic = std::chrono::high_resolution_clock::now();
 
     /* Integrate solution */
-    if(!_enable_feedback)
-    {
-        _rt_model->getJointPosition(_q);
-        _rt_model->getJointVelocity(_qdot);
-        _q += getPeriodSec() * _qdot;
-        _rt_model->setJointPosition(_q);
-        _rt_model->update();
-    }
-
+    _rt_model->getJointPosition(_q);
+    _rt_model->getJointVelocity(_qdot);
+    _q += getPeriodSec() * _qdot;
+    _rt_model->setJointPosition(_q);
+    _rt_model->update();
 
     _fake_time += getPeriodSec();
 
     /* Send state to nrt */
-    // _nrt_ci->pushState(_rt_ci.get(), _rt_model.get());
+    _nrt_ci->pushState(_rt_ci.get(), _rt_model.get());
 
     /* Move robot */
-    if(_enable_feedback)
-    {
-        _robot->setReferenceFrom(*_rt_model, Sync::Effort);
-    }
-    else
-    {
-        _robot->setReferenceFrom(*_rt_model);
-    }
+    _robot->setReferenceFrom(*_rt_model);
 
     _robot->move();
+
+    toc = std::chrono::high_resolution_clock::now();
+    double overhead_time = std::chrono::duration_cast<std::chrono::nanoseconds>(toc-tic).count()*1e-9;
+    _profiling_logger->add("overhead_time", overhead_time);
 }
 
 void CartesioRt::stopping()
 {
     _rt_active = false;
+    
+    if (!_ros_active)
+    {   
+        stop_completed();
+    }
     stop_completed();
 }
 
 void CartesioRt::on_abort()
 {
     _rt_active = false;
-    _nrt_exit = true;
 }
 
 void CartesioRt::on_close()
@@ -201,6 +234,8 @@ void CartesioRt::on_close()
     _nrt_exit = true;
     jinfo("joining with nrt thread..");
     if(_nrt_th) _nrt_th->join();
+
+    _profiling_logger->flush_available_data();
 }
 
 XBOT2_REGISTER_PLUGIN(CartesioRt,

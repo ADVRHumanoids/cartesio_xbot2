@@ -26,18 +26,19 @@ private:
 
     std::unique_ptr<ros::NodeHandle> _nh;
 
-    bool _enable_feedback;
-
     JointIdMap _qmap;
     Eigen::VectorXd _q, _qdot;
     ModelInterface::Ptr _rt_model;
     Cartesian::CartesianInterfaceImpl::Ptr _rt_ci;
     Cartesian::LockfreeBufferImpl::Ptr _nrt_ci;
-    std::atomic_bool _rt_active;
-    std::atomic_bool _nrt_exit;
-    double _fake_time;
+    std::atomic_bool _rt_active, _ros_active, _nrt_exit;
+    double _fake_time, _solve_time;
+
+    std::map<std::string, ControlMode> _ctrl_map;
 
     std::unique_ptr<thread> _nrt_th;
+
+    XBot::MatLogger2::Ptr _profiling_logger;
 };
 
 
