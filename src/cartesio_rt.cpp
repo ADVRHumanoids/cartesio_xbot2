@@ -96,7 +96,7 @@ bool CartesioRt::on_initialize()
                     *_ros_active_ptr = true;
                 }
 
-                this_thread::sleep_for(10ms);
+                this_thread::sleep_for(2ms);
 
                 if (*_ros_active_ptr)
                 {
