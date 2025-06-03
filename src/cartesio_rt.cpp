@@ -143,7 +143,7 @@ bool CartesioRt::on_initialize()
 #endif
 
     // logger
-    _profiling_logger = XBot::MatLogger2::MakeLogger("profiling_ik");
+    _profiling_logger = XBot::MatLogger2::MakeLogger("/tmp/profiling_ik");
     _profiling_logger->create("solve_time", 1);
     _profiling_logger->create("overhead_time", 1);
 
