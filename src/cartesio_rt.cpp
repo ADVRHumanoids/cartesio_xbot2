@@ -158,11 +158,14 @@ void CartesioRt::starting()
     // align model to current position reference
     _robot->sense(false);
     _robot->getPositionReference(_qmap);
-    _rt_model->setJointPosition(_qmap);
+    _rt_model->syncFrom(*_robot);
     _rt_model->update();
 
     // reset ci
     _rt_ci->reset(_fake_time);
+
+    // update ci
+    _rt_ci->update(_fake_time, getPeriodSec());
 
     // signal nrt thread that rt is active
     _rt_active = true;

@@ -11,11 +11,11 @@ ModelInterface:
 xbotcore_device_configs:
     sim: $(rospack find centauro_config)/hal/centauro_gz.yaml
     dummy: $(rospack find centauro_config)/hal/centauro_dummy.yaml
-
+    ec_pos: /home/embedded/xbot2_ws/src/CentauroConfig/hal/centauro_ec_all.yaml
 
 # threads
 xbotcore_threads:
-    rt_main:  {sched: fifo , prio: 60, period: 0.001, core_id: 2}
+    rt_main:  {sched: fifo , prio: 99, period: 0.002, core_id: 2}
     nrt_main: {sched: other, prio: 0 , period: 0.005, core_id: 4}
 
 
@@ -41,6 +41,9 @@ xbotcore_plugins:
         problem_description: 
           type: yamlfile
           value: $PWD/centauro_stack.yaml
+        enabled_chains:
+          value: [right_arm]
+          type: vector<string>
     
 
 
