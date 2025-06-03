@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.10)
 project(cartesio_xbot2)
 
 option(XBOT2_ENABLE_XENO OFF "Compile against xenomai")
+option(COMPILE_TESTS OFF "Compile tests")
 
 find_package(xbot2 REQUIRED)
 find_package(cartesian_interface REQUIRED)
@@ -17,3 +18,7 @@ install(
     TARGETS cartesio_rt
     DESTINATION lib
     )
+
+if(${COMPILE_TESTS})
+    add_subdirectory(test)
+endif()
