@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.10)
 
 project(cartesio_xbot2)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 option(XBOT2_ENABLE_XENO OFF "Compile against xenomai")
 option(COMPILE_TESTS OFF "Compile tests")
 
