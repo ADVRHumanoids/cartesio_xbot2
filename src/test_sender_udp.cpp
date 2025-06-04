@@ -11,6 +11,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <thread>       // for std::this_thread::sleep_for
+#include <chrono>       // for std::chrono::milliseconds
+
 
 static void     _serialize_float (unsigned char**, const float);
 static uint32_t _pack754_32 (float);
@@ -84,34 +91,21 @@ int main(void)
     /* Wait for the socket to finish the setup */
     sleep(2);
     
-    while(1)
-    {
+    //while(1)
+    //{
         /* Data setup */
-        float pos_x = 0;
-        float pos_y = 0;
-        float pos_z = 0;
-        float pos_a = 0;
-        float pos_e = 0;
-        float pos_r = 0;
+        /*float pos_x = 700.0;
+        float pos_y = 500.00;
+        float pos_z = 1200.0;
+        float pos_a = 0.0;
+        float pos_e = 180.0;
+        float pos_r = 0.0;
+        */
         
-        /* Write original to file */
-        FILE* file_orig = fopen("file_orig.txt", "a");
-        if (file_orig == NULL) {
-                printf("Error opening file\n");
-        }
-        
-        fprintf(file_orig, "%.3f ",  pos_x);
-        fprintf(file_orig, "%.3f ",  pos_y);
-        fprintf(file_orig, "%.3f ",  pos_z);
-        fprintf(file_orig, "%.3f ",  pos_a);
-        fprintf(file_orig, "%.3f ",  pos_e);
-        fprintf(file_orig, "%.3f\n", pos_r);
-        
-        fclose(file_orig);
         
         /* Serialization */
-        const unsigned short buffer_size = 6*4; /* data*byte */
-        unsigned char tx_args_ser[buffer_size];
+        //const unsigned short buffer_size = 6*4; /* data*byte */
+        /*unsigned char tx_args_ser[buffer_size];
         unsigned char* tx_args_ser_mvptr = &tx_args_ser[0];
         
         _serialize_float(&tx_args_ser_mvptr, pos_x);
@@ -119,13 +113,56 @@ int main(void)
         _serialize_float(&tx_args_ser_mvptr, pos_z);
         _serialize_float(&tx_args_ser_mvptr, pos_a);
         _serialize_float(&tx_args_ser_mvptr, pos_e);
-        _serialize_float(&tx_args_ser_mvptr, pos_r);
+        _serialize_float(&tx_args_ser_mvptr, pos_r); */
+
+
+
+  std::ifstream infile("deserialized.txt");
+  if (!infile.is_open()) {
+      std::cerr << "Failed to open deserialized.txt" << std::endl;
+      return 1;
+  }
+
+  std::string line;
+  while (std::getline(infile, line)) {
+      std::istringstream iss(line);
+
+      float pos_x, pos_y, pos_z, pos_a, pos_e, pos_r;
+      if (!(iss >> pos_x >> pos_y >> pos_z >> pos_a >> pos_e >> pos_r)) {
+          std::cerr << "Invalid line format, skipping: " << line << std::endl;
+          continue; // skip malformed line
+      }
+
+      /* Serialization */
+      const unsigned short buffer_size = 6 * 4; // 6 floats * 4 bytes each
+      unsigned char tx_args_ser[buffer_size];
+      unsigned char* tx_args_ser_mvptr = &tx_args_ser[0];
+
+      _serialize_float(&tx_args_ser_mvptr, pos_x);
+      _serialize_float(&tx_args_ser_mvptr, pos_y);
+      _serialize_float(&tx_args_ser_mvptr, pos_z);
+      _serialize_float(&tx_args_ser_mvptr, pos_a);
+      _serialize_float(&tx_args_ser_mvptr, pos_e);
+      _serialize_float(&tx_args_ser_mvptr, pos_r);
+
+      /* Send serialized data to socket */
+      if (sendto(CENT_sockfd, tx_args_ser, buffer_size, 0, (const struct sockaddr *) &CENT_sockaddr_serv, sizeof(struct sockaddr_in)) != buffer_size) {
+          printf("Error in writing to socket\n");
+      }
+
+      // Sleep for 2 milliseconds
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      // Or use: usleep(2000); // 2000 microseconds = 2 ms
+  }
+
+  
         
         /* Send serialized to socket */
-        if( sendto(CENT_sockfd, tx_args_ser, buffer_size, 0, (const struct sockaddr *) &CENT_sockaddr_serv, sizeof(struct sockaddr_in)) != buffer_size)
+       /* if( sendto(CENT_sockfd, tx_args_ser, buffer_size, 0, (const struct sockaddr *) &CENT_sockaddr_serv, sizeof(struct sockaddr_in)) != buffer_size)
                 printf("Error in writing to socket\n");
-    }
-    
+    }*/
+
+    infile.close();
     close(CENT_sockfd);
     return 0;
 }

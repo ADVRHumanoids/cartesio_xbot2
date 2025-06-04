@@ -149,7 +149,7 @@ int main(int argc, char** argv)
 {
     ros::init(argc, argv, "udp_pose_publisher");
     ros::NodeHandle nh;
-    ros::Publisher pub = nh.advertise<geometry_msgs::PoseStamped>("pose", 10);
+    ros::Publisher pub = nh.advertise<geometry_msgs::PoseStamped>("/cartesian/arm2_8/reference", 10);
     ros::Rate loop_rate(500);  // Adjust to your expected frequency
 
     int sockfd;
@@ -214,17 +214,25 @@ int main(int argc, char** argv)
             for (int i = 0; i < 6; ++i)
                 deser[i] = unserialize_float(&buffer_ptr);
 
-            // mm → m and deg → rad
+            // mm → m 
             float x = deser[0] / 1000.0f;
             float y = deser[1] / 1000.0f;
             float z = deser[2] / 1000.0f;
 
-            float roll  = deser[3] * M_PI / 180.0f;
-            float pitch = deser[4] * M_PI / 180.0f;
-            float yaw   = deser[5] * M_PI / 180.0f;
+            // A E R notation for the angles + deg → rad
+            float azimuth  = deser[3] * M_PI / 180.0f;
+            float elevation = deser[4] * M_PI / 180.0f;
+            float roll   = deser[5] * M_PI / 180.0f;
+            
+            std::cout << "azimuth: " << azimuth << "elevation: " << elevation << "range or roll?: " << roll << std::endl;
+
+            tf::Quaternion q_a = tf::createQuaternionFromRPY(0, 0, azimuth);
+            tf::Quaternion q_e = tf::createQuaternionFromRPY(0, elevation, 0);
+            tf::Quaternion q_r = tf::createQuaternionFromRPY(roll, 0, 0);
 
             // Quaternion conversion
-            tf::Quaternion q = tf::createQuaternionFromRPY(roll, pitch, yaw);
+            tf::Quaternion q = q_a * q_e * q_r;
+            q.normalize();
 
             // Prepare PoseStamped msg for RT CARTESIO
             geometry_msgs::PoseStamped pose_msg;
